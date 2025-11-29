@@ -1,0 +1,176 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{hyperref}
+
+\title{Reporte de Proyecto: Paralelización de KNN con MPI}
+\author{Neftalí}
+\date{\today}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\begin{document}
+
+\maketitle
+
+\section{Introducción}
+
+El objetivo de este proyecto es paralelizar el algoritmo de clasificación \textbf{K-Nearest Neighbors (KNN)} utilizando la interfaz de paso de mensajes (\textbf{MPI}) en Python. KNN es un algoritmo de aprendizaje supervisado que clasifica un nuevo punto basándose en la mayoría de votos de sus $k$ vecinos más cercanos en el espacio de características.
+
+La paralelización se justifica debido a que el cálculo de distancias entre el punto de prueba y todos los puntos de entrenamiento es independiente para cada punto de prueba. Esto permite distribuir el conjunto de datos de prueba entre múltiples procesos, reduciendo significativamente el tiempo de ejecución.
+
+Utilizamos el modelo \textbf{SPMD (Single Program, Multiple Data)}, donde todos los procesos ejecutan el mismo código pero operan sobre diferentes porciones de los datos.
+
+\section{Desarrollo del Código (Versiones Beta)}
+
+El desarrollo se llevó a cabo en tres etapas incrementales para asegurar la robustez y facilitar la depuración.
+
+\subsection{Versión Beta 1: Estructura de Comunicación Básica}
+\textbf{Objetivo}: Establecer el entorno MPI y verificar la distribución de datos (\texttt{scatter}).
+
+En esta etapa, nos enfocamos en dividir el conjunto de datos de prueba (\texttt{X\_test}) entre los procesos disponibles.
+\begin{itemize}
+    \item El proceso raíz (Rank 0) carga los datos.
+    \item Se utiliza \texttt{comm.scatter} para enviar fragmentos de \texttt{X\_test} a cada proceso.
+    \item Cada proceso recibe su parte y verifica la recepción.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption=Fragmento de knn\_parallel\_v1.py]
+if rank == 0:
+    # Cargar y dividir datos
+    X_test_chunks = np.array_split(X_test, size)
+else:
+    X_test_chunks = None
+
+# Distribuir datos
+local_X_test = comm.scatter(X_test_chunks, root=0)
+\end{lstlisting}
+
+\subsection{Versión Beta 2: Cálculo Distribuido}
+\textbf{Objetivo}: Implementar la lógica de KNN en paralelo.
+
+Para calcular las distancias, cada proceso necesita acceso a \textbf{todo} el conjunto de entrenamiento (\texttt{X\_train}, \texttt{y\_train}), ya que cualquier punto de entrenamiento podría ser un vecino cercano.
+\begin{itemize}
+    \item Se utiliza \texttt{comm.bcast} para enviar \texttt{X\_train} y \texttt{y\_train} a todos los procesos.
+    \item Cada proceso calcula las predicciones para sus datos locales (\texttt{local\_X\_test}).
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption=Fragmento de knn\_parallel\_v2.py]
+# Broadcast de datos de entrenamiento (necesarios en todos los nodos)
+X_train = comm.bcast(X_train, root=0)
+y_train = comm.bcast(y_train, root=0)
+
+# Calculo local
+local_predictions = [knn_predict(x, X_train, y_train, k) for x in local_X_test]
+\end{lstlisting}
+
+\subsection{Versión Final: Implementación Completa}
+\textbf{Objetivo}: Recolectar resultados, medir tiempos y validar precisión.
+
+Finalmente, recolectamos todas las predicciones en el proceso raíz utilizando \texttt{comm.gather} y calculamos la precisión del modelo.
+\begin{itemize}
+    \item \texttt{comm.gather} une las listas de predicciones locales en una lista global en el Rank 0.
+    \item Se miden los tiempos de cómputo y comunicación.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption=Fragmento de knn\_parallel\_final.py]
+# Recoleccion
+all_predictions = comm.gather(local_predictions, root=0)
+
+if rank == 0:
+    # Aplanar y evaluar
+    flat_predictions = [item for sublist in all_predictions for item in sublist]
+    accuracy = np.mean(flat_predictions == y_test)
+\end{lstlisting}
+
+\section{Resultados y Análisis}
+
+Se realizaron experimentos variando el número de procesos $p \in \{1, 2, 4, 8\}$ utilizando el dataset \texttt{digits} de scikit-learn.
+
+\subsection{Precisión del Modelo}
+\begin{itemize}
+    \item \textbf{Secuencial}: 0.9833
+    \item \textbf{Paralelo}: 0.9833
+\end{itemize}
+La precisión se mantiene idéntica, lo cual confirma que la paralelización no alteró la lógica del algoritmo (es determinista).
+
+\subsection{Tiempos de Ejecución}
+Se midió el tiempo total, tiempo de cómputo y tiempo de comunicación.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{time_vs_processes.png}
+    \caption{Análisis de Tiempo de Ejecución}
+    \label{fig:time}
+\end{figure}
+
+\textbf{Análisis}: Se observa una disminución clara en el tiempo total a medida que aumentamos los procesos. El tiempo de cómputo (línea naranja) decrece casi linealmente, lo que indica una buena paralelización de la carga de trabajo.
+
+\subsection{Speedup}
+El Speedup se define como $S_p = \frac{T_{secuencial}}{T_{paralelo}}$.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{speedup.png}
+    \caption{Análisis de Speedup}
+    \label{fig:speedup}
+\end{figure}
+
+\textbf{Análisis}:
+\begin{itemize}
+    \item El speedup aumenta con el número de procesos, acercándose al ideal (línea gris discontinua).
+    \item La desviación del ideal se debe a la \textbf{Ley de Amdahl}: la parte secuencial (carga de datos) y la sobrecarga de comunicación (\texttt{bcast}, \texttt{gather}) limitan la aceleración máxima.
+\end{itemize}
+
+\subsection{FLOPs (Operaciones de Punto Flotante)}
+Se estimaron los FLOPs por segundo para medir el rendimiento computacional.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{flops.png}
+    \caption{Rendimiento en FLOPs/sec}
+    \label{fig:flops}
+\end{figure}
+
+\textbf{Análisis}: El sistema es capaz de procesar más operaciones por segundo al utilizar más núcleos, demostrando escalabilidad en términos de potencia de cálculo.
+
+\section{Conclusión}
+
+El proyecto ha sido exitoso en paralelizar el algoritmo KNN.
+\begin{enumerate}
+    \item \textbf{Funcionalidad}: Se logró una implementación correcta que produce los mismos resultados que la versión secuencial.
+    \item \textbf{Rendimiento}: Se obtuvo una reducción significativa en el tiempo de ejecución (Speedup) al aumentar los procesos.
+    \item \textbf{Escalabilidad}: El algoritmo escala bien para este tamaño de problema, aunque para un número muy grande de procesos, la comunicación podría empezar a dominar el tiempo total.
+\end{enumerate}
+
+La cantidad óptima de procesos para este problema específico y hardware parece ser \textbf{8} (o el máximo de núcleos físicos disponibles), ya que el speedup sigue creciendo sin saturarse completamente.
+
+\end{document}
