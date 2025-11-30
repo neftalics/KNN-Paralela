@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <color id="theme-bg" value="#0a0a14"/> <color id="theme-container-fill" value="#131c2b"/> <color id="theme-container-stroke" value="#2c4a7c"/> <color id="theme-accent" value="#c0ff00"/> <color id="theme-text-light" value="#ffffff"/> <marker id="arrow-accent" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c0ff00" />
+    </marker>
+  </defs>
+
+  <rect width="800" height="500" fill="#0a0a14" />
+
+  <g transform="translate(100, 220)">
+    <rect x="0" y="0" width="600" height="60" rx="10" fill="#131c2b" stroke="#2c4a7c" stroke-width="3"/>
+    <text x="300" y="35" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#ffffff">
+      Red de Interconexión (Switch/Fabric)
+    </text>
+    <line x1="20" y1="50" x2="580" y2="50" stroke="#c0ff00" stroke-width="2" stroke-dasharray="5,5" opacity="0.5"/>
+    <circle cx="100" cy="50" r="4" fill="#c0ff00">
+       <animate attributeName="cx" values="100;500;100" dur="6s" repeatCount="indefinite" />
+    </circle>
+  </g>
+
+  <defs>
+    <g id="tech-node">
+      <rect x="0" y="0" width="140" height="150" rx="12" fill="#131c2b" stroke="#2c4a7c" stroke-width="3" />
+      
+      <path d="M 0 12 Q 0 0 12 0 L 128 0 Q 140 0 140 12 L 140 35 L 0 35 Z" fill="#2c4a7c"/>
+      <text x="70" y="24" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#ffffff">Nodo de Cómputo</text>
+      
+      <g transform="translate(15, 50)">
+        <rect x="0" y="0" width="50" height="50" rx="6" fill="#1e2f47" stroke="#c0ff00" stroke-width="2"/>
+        <text x="25" y="30" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#c0ff00">CPU</text>
+      </g>
+      
+      <g transform="translate(75, 50)">
+        <rect x="0" y="0" width="50" height="50" rx="6" fill="#1e2f47" stroke="#ffffff" stroke-width="1"/>
+        <text x="25" y="25" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#ffffff">RAM</text>
+        <text x="25" y="40" font-family="sans-serif" font-size="10" text-anchor="middle" fill="#aaaaaa">Privada</text>
+      </g>
+
+      <line x1="10" y1="120" x2="130" y2="120" stroke="#2c4a7c" stroke-width="2"/>
+      <text x="70" y="138" font-family="sans-serif" font-size="10" text-anchor="middle" fill="#6688bb">Memoria NO compartida</text>
+    </g>
+  </defs>
+
+  <use href="#tech-node" x="110" y="60" />
+  <use href="#tech-node" x="330" y="60" />
+  <use href="#tech-node" x="550" y="60" />
+  
+  <use href="#tech-node" x="110" y="300" />
+  <use href="#tech-node" x="330" y="300" />
+  <use href="#tech-node" x="550" y="300" />
+
+  <g stroke="#c0ff00" stroke-width="3" fill="none" marker-end="url(#arrow-accent)">
+    <line x1="180" y1="210" x2="180" y2="220" />
+    <line x1="400" y1="210" x2="400" y2="220" />
+    <line x1="620" y1="210" x2="620" y2="220" />
+
+    <line x1="180" y1="300" x2="180" y2="280" />
+    <line x1="400" y1="300" x2="400" y2="280" />
+    <line x1="620" y1="300" x2="620" y2="280" />
+  </g>
+
+</svg>

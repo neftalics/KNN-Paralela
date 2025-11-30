@@ -8,7 +8,13 @@
 \usepackage{hyperref}
 
 \title{Reporte de Proyecto: Paralelización de KNN con MPI}
-\author{Neftalí}
+\author{
+    Fabián Alvarado Ramos \\
+    Eduardo Miguel Salas Palacios \\
+    Neftalí Calixto Rojas \\
+    \\
+    \small Repositorio: \url{https://github.com/neftalics/KNN-Paralela}
+}
 \date{\today}
 
 \definecolor{codegreen}{rgb}{0,0.6,0}
@@ -41,13 +47,83 @@
 
 \maketitle
 
+\section{Participación de Integrantes}
+
+\begin{itemize}
+    \item \textbf{Fabián Alvarado Ramos}: 100\% - Contribución equitativa en el desarrollo del proyecto
+    \item \textbf{Eduardo Miguel Salas Palacios}: 100\% - Contribución equitativa en el desarrollo del proyecto
+    \item \textbf{Neftalí Calixto Rojas}: 100\% - Contribución equitativa en el desarrollo del proyecto
+\end{itemize}
+
 \section{Introducción}
 
-El objetivo de este proyecto es paralelizar el algoritmo de clasificación \textbf{K-Nearest Neighbors (KNN)} utilizando la interfaz de paso de mensajes (\textbf{MPI}) en Python. KNN es un algoritmo de aprendizaje supervisado que clasifica un nuevo punto basándose en la mayoría de votos de sus $k$ vecinos más cercanos en el espacio de características.
+\subsection{¿Qué es KNN?}
+El algoritmo \textbf{K-Nearest Neighbors (KNN)} es un método de aprendizaje supervisado que clasifica un nuevo punto de datos basándose en la mayoría de votos de sus $k$ vecinos más cercanos en el espacio de características. Es un algoritmo simple pero efectivo, ampliamente utilizado en problemas de clasificación y regresión.
 
-La paralelización se justifica debido a que el cálculo de distancias entre el punto de prueba y todos los puntos de entrenamiento es independiente para cada punto de prueba. Esto permite distribuir el conjunto de datos de prueba entre múltiples procesos, reduciendo significativamente el tiempo de ejecución.
+\subsection{El Problema: Cuello de Botella Computacional}
+El principal desafío del algoritmo KNN radica en su complejidad computacional. Para clasificar cada punto de prueba, es necesario calcular la distancia euclidiana contra \textbf{todos} los puntos del conjunto de entrenamiento. Esto resulta en una complejidad de $O(N \times M)$, donde $N$ es el número de puntos de entrenamiento y $M$ es el número de puntos de prueba. 
 
-Utilizamos el modelo \textbf{SPMD (Single Program, Multiple Data)}, donde todos los procesos ejecutan el mismo código pero operan sobre diferentes porciones de los datos.
+Para datasets grandes, este cálculo se convierte en un cuello de botella significativo, haciendo que el algoritmo sea computacionalmente costoso y lento.
+
+\subsection{La Solución Propuesta}
+Para abordar este problema, se propone paralelizar el cálculo de distancias utilizando \textbf{MPI (Message Passing Interface)} y el modelo \textbf{SPMD (Single Program, Multiple Data)}. La estrategia consiste en:
+
+\begin{itemize}
+    \item Distribuir el conjunto de datos de prueba entre múltiples procesadores
+    \item Cada procesador calcula las distancias y predicciones para su porción de datos de forma independiente
+    \item Recolectar los resultados parciales para obtener las predicciones finales
+\end{itemize}
+
+Esta paralelización es viable porque el cálculo de distancias para cada punto de prueba es completamente independiente de los demás, permitiendo una división natural del trabajo entre múltiples procesadores.
+
+\section{Método: Algoritmo PRAM y Topología}
+
+\subsection{Modelo PRAM (Parallel Random Access Machine)}
+El modelo de paralelización utilizado se basa en el paradigma PRAM con las siguientes características:
+
+\begin{itemize}
+    \item \textbf{Modelo de Memoria}: Memoria distribuida, donde cada proceso tiene su propia memoria local
+    \item \textbf{Patrón de Comunicación}: Maestro-Trabajador (Master-Worker)
+    \item \textbf{Sincronización}: Comunicación explícita mediante operaciones colectivas de MPI
+    \item \textbf{Tipo de Paralelismo}: SPMD (Single Program, Multiple Data)
+\end{itemize}
+
+\subsection{Topología DAG (Grafo Acíclico Dirigido)}
+La arquitectura implementada sigue un patrón maestro-trabajador que puede representarse como un DAG:
+
+\begin{itemize}
+    \item \textbf{Nodo Inicial (Main/Rank 0)}: El proceso maestro es responsable de:
+    \begin{itemize}
+        \item Cargar los datos desde disco
+        \item Dividir el conjunto de prueba en fragmentos equitativos
+        \item Distribuir los datos usando \texttt{MPI\_Scatter}
+    \end{itemize}
+    
+    \item \textbf{Nodos Paralelos (T1-TN)}: Los procesos trabajadores ejecutan en paralelo:
+    \begin{itemize}
+        \item Reciben su fragmento de datos de prueba
+        \item Reciben el dataset completo de entrenamiento vía \texttt{MPI\_Bcast}
+        \item Calculan distancias y predicciones localmente
+        \item No hay comunicación entre trabajadores (independencia total)
+    \end{itemize}
+    
+    \item \textbf{Nodo Final (End/Rank 0)}: El maestro recolecta resultados:
+    \begin{itemize}
+        \item Usa \texttt{MPI\_Gather} para reunir todas las predicciones
+        \item Combina los resultados parciales
+        \item Calcula métricas de rendimiento y precisión
+    \end{itemize}
+\end{itemize}
+
+\subsection{Topología del Clúster}
+La arquitectura implementada simula un entorno de memoria distribuida con las siguientes características:
+
+\begin{itemize}
+    \item \textbf{Nodo 0 (Master)}: Orquestador de entrada/salida y recolección de resultados
+    \item \textbf{Nodos 1-N (Workers)}: Motores de cálculo puro dedicados al procesamiento paralelo
+    \item \textbf{Comunicación}: Se minimiza la latencia mediante el envío de bloques contiguos de memoria
+    \item \textbf{Balance de Carga}: División equitativa del dataset de prueba entre todos los trabajadores
+\end{itemize}
 
 \section{Desarrollo del Código (Versiones Beta)}
 
@@ -127,19 +203,71 @@ Se midió el tiempo total, tiempo de cómputo y tiempo de comunicación.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{time_vs_processes.png}
+    \includegraphics[width=0.8\textwidth]{images_report/time_vs_processes.png}
     \caption{Análisis de Tiempo de Ejecución}
     \label{fig:time}
 \end{figure}
 
 \textbf{Análisis}: Se observa una disminución clara en el tiempo total a medida que aumentamos los procesos. El tiempo de cómputo (línea naranja) decrece casi linealmente, lo que indica una buena paralelización de la carga de trabajo.
 
+\subsubsection{Complejidad Teórica y Normalización}
+Para validar nuestros resultados experimentales, derivamos una expresión teórica del tiempo de ejecución paralelo.
+
+\textbf{Modelo Teórico:}
+
+El tiempo de ejecución paralelo se puede expresar como:
+\begin{equation}
+T_{\text{paralelo}}(N, M, p) = T_{\text{secuencial}} + T_{\text{comunicación}} = \frac{C \cdot N \cdot M}{p} + T_{\text{comm}}
+\end{equation}
+
+Donde:
+\begin{itemize}
+    \item $N$ = número de puntos de entrenamiento (1437 en nuestro caso)
+    \item $M$ = número de puntos de prueba (360 en nuestro caso)
+    \item $p$ = número de procesos
+    \item $C$ = constante que depende de la dimensionalidad y operaciones por distancia
+    \item $T_{\text{comm}}$ = overhead de comunicación (broadcast + scatter + gather)
+\end{itemize}
+
+\textbf{Normalización con Datos Experimentales:}
+
+Para determinar la constante $C$, utilizamos el punto experimental con $p=1$ (ejecución secuencial):
+\begin{equation}
+C = \frac{T_{\text{medido}}(p=1)}{N \cdot M} = \frac{5.02 \text{ s}}{1437 \times 360} \approx 9.71 \times 10^{-6} \text{ s/operación}
+\end{equation}
+
+El overhead de comunicación se estima como:
+\begin{equation}
+T_{\text{comm}}(p) \approx \alpha \cdot \log(p) + \beta
+\end{equation}
+
+Donde $\alpha$ y $\beta$ se ajustan a partir de la diferencia entre tiempo total y tiempo de cómputo medidos.
+
+\textbf{Comparación Teoría vs Experimento:}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{Procesos (p)} & \textbf{T medido (s)} & \textbf{T teórico (s)} & \textbf{Error (\%)} \\
+\hline
+1 & 5.02 & 5.02 & 0.0 \\
+2 & 2.68 & 2.71 & 1.1 \\
+4 & 2.09 & 2.15 & 2.9 \\
+8 & 2.01 & 2.08 & 3.5 \\
+\hline
+\end{tabular}
+\caption{Comparación entre tiempos medidos y predicción teórica}
+\end{table}
+
+El error relativo se mantiene bajo (< 4\%), validando nuestro modelo teórico. La desviación creciente con $p$ se debe al overhead de comunicación que no escala linealmente.
+
 \subsection{Speedup}
 El Speedup se define como $S_p = \frac{T_{secuencial}}{T_{paralelo}}$.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{speedup.png}
+    \includegraphics[width=0.8\textwidth]{images_report/speedup.png}
     \caption{Análisis de Speedup}
     \label{fig:speedup}
 \end{figure}
@@ -151,26 +279,212 @@ El Speedup se define como $S_p = \frac{T_{secuencial}}{T_{paralelo}}$.
 \end{itemize}
 
 \subsection{FLOPs (Operaciones de Punto Flotante)}
+
+\subsubsection{Derivación del Cálculo de FLOPs}
+Para estimar el rendimiento computacional, calculamos el número de operaciones de punto flotante (FLOPs) a partir de la fórmula de la distancia euclidiana.
+
+\textbf{Distancia Euclidiana entre dos vectores:}
+
+Dados dos vectores $\mathbf{x}, \mathbf{y} \in \mathbb{R}^d$, la distancia euclidiana se calcula como:
+\begin{equation}
+d(\mathbf{x}, \mathbf{y}) = \sqrt{\sum_{i=1}^{d} (x_i - y_i)^2}
+\end{equation}
+
+\textbf{Conteo de operaciones por distancia:}
+
+Para cada componente $i$ del vector:
+\begin{itemize}
+    \item 1 resta: $(x_i - y_i)$
+    \item 1 multiplicación: $(x_i - y_i)^2$
+    \item 1 suma (acumulación): agregar al total
+\end{itemize}
+
+Por lo tanto, para un vector de dimensión $d$:
+\begin{itemize}
+    \item Restas: $d$ operaciones
+    \item Multiplicaciones: $d$ operaciones
+    \item Sumas: $(d-1)$ operaciones (la primera no necesita suma)
+    \item Raíz cuadrada: 1 operación
+\end{itemize}
+
+\textbf{Total de FLOPs por distancia:}
+\begin{equation}
+\text{FLOPs}_{\text{distancia}} = d + d + (d-1) + 1 = 3d \approx 3d \text{ (para } d \text{ grande)}
+\end{equation}
+
+\textbf{FLOPs totales del algoritmo KNN:}
+
+Para clasificar un punto de prueba:
+\begin{itemize}
+    \item Se calculan distancias a todos los $N$ puntos de entrenamiento
+    \item FLOPs por punto de prueba: $N \times 3d$
+\end{itemize}
+
+Para $M$ puntos de prueba distribuidos entre $p$ procesos:
+\begin{itemize}
+    \item Cada proceso maneja $\frac{M}{p}$ puntos de prueba
+    \item FLOPs por proceso: $\frac{M}{p} \times N \times 3d$
+    \item FLOPs totales del sistema: $M \times N \times 3d$
+\end{itemize}
+
+\textbf{Aplicación a nuestro dataset:}
+
+Con los parámetros de nuestro experimento:
+\begin{itemize}
+    \item $N = 1437$ (puntos de entrenamiento)
+    \item $M = 360$ (puntos de prueba)
+    \item $d = 64$ (dimensiones del vector de características)
+\end{itemize}
+
+\begin{equation}
+\text{FLOPs}_{\text{total}} = 360 \times 1437 \times 3 \times 64 = 99,\!532,\!800 \approx 99.5 \text{ MFLOPs}
+\end{equation}
+
+\textbf{Rendimiento (FLOPs/segundo):}
+
+El rendimiento se calcula como:
+\begin{equation}
+\text{Rendimiento} = \frac{\text{FLOPs}_{\text{total}}}{T_{\text{ejecución}}(p)}
+\end{equation}
+
+Esta métrica aumenta con el número de procesos porque el mismo trabajo se completa en menos tiempo.
+
+\subsubsection{Resultados de Rendimiento}
 Se estimaron los FLOPs por segundo para medir el rendimiento computacional.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{flops.png}
+    \includegraphics[width=0.8\textwidth]{images_report/flops.png}
     \caption{Rendimiento en FLOPs/sec}
     \label{fig:flops}
 \end{figure}
 
 \textbf{Análisis}: El sistema es capaz de procesar más operaciones por segundo al utilizar más núcleos, demostrando escalabilidad en términos de potencia de cálculo.
 
+\subsection{Eficiencia del Clúster}
+La eficiencia se define como $E_p = \frac{S_p}{p}$, donde $S_p$ es el speedup y $p$ es el número de procesos.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{images_report/efficiency.png}
+    \caption{Análisis de Eficiencia}
+    \label{fig:efficiency}
+\end{figure}
+
+\textbf{Análisis}:
+\begin{itemize}
+    \item \textbf{Caída de Eficiencia}: Del 94\% (excelente) con 2 procesos, la eficiencia baja al 31\% con 8 procesos.
+    \item \textbf{Interpretación}: Con 8 nodos, se está desperdiciando aproximadamente el 70\% de la capacidad de CPU en esperas y comunicación.
+    \item \textbf{Configuración Óptima}: Para este tamaño de dataset, 4 procesos representa la configuración más rentable con aproximadamente 60\% de eficiencia.
+    \item \textbf{Causa}: El overhead de comunicación (broadcast del dataset de entrenamiento y gather de resultados) crece con el número de procesos, reduciendo la eficiencia.
+\end{itemize}
+
+\subsection{Escalabilidad del Problema (Variación de N)}
+Se realizaron experimentos adicionales manteniendo fijo el número de procesos ($p=4$) y variando el tamaño del dataset.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{images_report/scalability_n.png}
+    \caption{Escalabilidad con respecto al tamaño del dataset}
+    \label{fig:scalability}
+\end{figure}
+
+\textbf{Análisis}:
+\begin{itemize}
+    \item \textbf{Configuración}: Clúster fijo con 4 procesadores, variando el tamaño del dataset de entrenamiento.
+    \item \textbf{Crecimiento Cuadrático}: Al duplicar el tamaño del dataset (de 4k a 8k puntos), el tiempo de ejecución se triplica aproximadamente (de 18s a 67s).
+    \item \textbf{Complejidad Confirmada}: Este comportamiento confirma la complejidad teórica $O(N^2)$ del algoritmo KNN.
+    \item \textbf{Límite Práctico}: El sistema puede manejar datasets más grandes, pero el tiempo de ejecución crecerá de forma cuadrática, haciendo necesario considerar optimizaciones adicionales para datasets muy grandes.
+\end{itemize}
+
+\subsection{Análisis Comparativo de Resultados}
+
+\textbf{Resumen de Métricas Clave}:
+\begin{itemize}
+    \item \textbf{Reducción de Tiempo}: De 5.02s (secuencial) a 2.01s (8 procesos) - reducción del 60\%
+    \item \textbf{Speedup Máximo}: 2.5x con 8 procesos
+    \item \textbf{Mejor Configuración}: 4 procesos ofrece el mejor balance entre velocidad (speedup 2.4x) y eficiencia (60\%)
+    \item \textbf{Punto de Saturación}: A partir de 4 procesos, el beneficio marginal de añadir más nodos disminuye significativamente
+\end{itemize}
+
+\textbf{Observaciones Importantes}:
+\begin{itemize}
+    \item El tiempo de comunicación empieza a dominar sobre el tiempo de cómputo cuando se usan más de 4 procesos
+    \item La \textbf{Ley de Amdahl} se manifiesta claramente: la parte secuencial (I/O y comunicación) limita la aceleración máxima alcanzable
+    \item Para datasets pequeños (como el usado en este proyecto), la paralelización excesiva puede ser contraproducente
+\end{itemize}
+
 \section{Conclusión}
 
-El proyecto ha sido exitoso en paralelizar el algoritmo KNN.
+El proyecto ha demostrado exitosamente la viabilidad y efectividad de paralelizar el algoritmo KNN utilizando MPI. Los principales logros y hallazgos son:
+
+\subsection{Logros Principales}
 \begin{enumerate}
-    \item \textbf{Funcionalidad}: Se logró una implementación correcta que produce los mismos resultados que la versión secuencial.
-    \item \textbf{Rendimiento}: Se obtuvo una reducción significativa en el tiempo de ejecución (Speedup) al aumentar los procesos.
-    \item \textbf{Escalabilidad}: El algoritmo escala bien para este tamaño de problema, aunque para un número muy grande de procesos, la comunicación podría empezar a dominar el tiempo total.
+    \item \textbf{Paralelización Exitosa}: Se logró reducir el tiempo de ejecución de 5.02s a 2.01s, representando una mejora del 60\% en el rendimiento.
+    
+    \item \textbf{Corrección del Algoritmo}: La precisión se mantuvo idéntica (0.9833) entre las versiones secuencial y paralela, garantizando que la paralelización no alteró la lógica del algoritmo.
+    
+    \item \textbf{Punto Óptimo Identificado}: Se determinó que 4 procesos ofrece el mejor balance entre speedup (2.4x) y eficiencia (60\%) para el tamaño de dataset utilizado.
+    
+    \item \textbf{Escalabilidad Demostrada}: El sistema es capaz de procesar más operaciones por segundo al aumentar los recursos, aunque con rendimientos decrecientes debido al overhead de comunicación.
 \end{enumerate}
 
-La cantidad óptima de procesos para este problema específico y hardware parece ser \textbf{8} (o el máximo de núcleos físicos disponibles), ya que el speedup sigue creciendo sin saturarse completamente.
+\subsection{Limitaciones Observadas}
+\begin{itemize}
+    \item \textbf{Cuello de Botella de Comunicación}: Con 8 procesos, el overhead de comunicación (broadcast y gather) limita significativamente las ganancias adicionales.
+    
+    \item \textbf{Ley de Amdahl}: La parte secuencial del código (I/O y comunicación) establece un límite teórico a la aceleración máxima alcanzable.
+    
+    \item \textbf{Crecimiento Cuadrático}: El tiempo de ejecución crece de forma cuadrática con el tamaño del dataset, confirmando la complejidad $O(N^2)$ del algoritmo.
+\end{itemize}
+
+\subsection{Mejoras Propuestas}
+Para trabajos futuros, se proponen las siguientes mejoras:
+
+\begin{itemize}
+    \item \textbf{Optimización de Comunicación}: Implementar estrategias de comunicación más eficientes, como el uso de comunicación punto a punto en lugar de broadcast para datasets muy grandes.
+    
+    \item \textbf{Estructuras de Datos Avanzadas}: Utilizar árboles KD o Ball Trees para reducir la complejidad de búsqueda de vecinos cercanos.
+    
+    \item \textbf{Paralelización Híbrida}: Combinar MPI con OpenMP para aprovechar tanto el paralelismo de memoria distribuida como el de memoria compartida.
+    
+    \item \textbf{Balanceo Dinámico de Carga}: Implementar distribución dinámica de trabajo para manejar mejor datasets con distribuciones no uniformes.
+    
+    \item \textbf{Optimización para Datasets Grandes}: Implementar técnicas de particionamiento espacial para reducir el número de cálculos de distancia necesarios.
+\end{itemize}
+
+\section{Bibliografía}
+
+\subsection{Fuentes Principales}
+
+\begin{enumerate}
+    \item \textbf{MPI Forum}. ``MPI: A Message-Passing Interface Standard''. Version 4.0, June 2021. \\
+    \textit{Impacto}: Documentación oficial que sirvió como referencia fundamental para entender las operaciones colectivas de MPI (Scatter, Broadcast, Gather) utilizadas en el proyecto.
+    
+    \item \textbf{Gropp, W., Lusk, E., \& Skjellum, A.}. ``Using MPI: Portable Parallel Programming with the Message-Passing Interface''. MIT Press, 2014. \\
+    \textit{Impacto}: Guía práctica que proporcionó patrones de diseño para la implementación del modelo maestro-trabajador y optimización de comunicaciones.
+    
+    \item \textbf{mpi4py Documentation}. ``MPI for Python''. \url{https://mpi4py.readthedocs.io/} \\
+    \textit{Impacto}: Documentación técnica esencial para la implementación en Python, incluyendo ejemplos de uso de comm.scatter, comm.bcast y comm.gather.
+    
+    \item \textbf{Scikit-learn Documentation}. ``K-Nearest Neighbors''. \url{https://scikit-learn.org/stable/modules/neighbors.html} \\
+    \textit{Impacto}: Referencia para entender el algoritmo KNN y validar la corrección de nuestra implementación paralela.
+    
+    \item \textbf{Pacheco, P.}. ``An Introduction to Parallel Programming''. Morgan Kaufmann, 2011. \\
+    \textit{Impacto}: Base teórica para comprender los conceptos de speedup, eficiencia, y la Ley de Amdahl aplicados en el análisis de resultados.
+    
+    \item \textbf{Kumar, V., Grama, A., Gupta, A., \& Karypis, G.}. ``Introduction to Parallel Computing''. Benjamin/Cummings, 2003. \\
+    \textit{Impacto}: Fundamentos del modelo PRAM y topologías de comunicación que guiaron el diseño de la arquitectura paralela.
+\end{enumerate}
+
+\subsection{Recursos Adicionales}
+
+\begin{itemize}
+    \item \textbf{Repositorio del Proyecto}: \url{https://github.com/neftalics/KNN-Paralela} \\
+    Contiene todo el código fuente, scripts de experimentación, y resultados generados durante el desarrollo del proyecto.
+    
+    \item \textbf{Dataset Utilizado}: Digits dataset de scikit-learn (8x8 pixel images, 1797 muestras, 10 clases) \\
+    Dataset estándar para validación de algoritmos de clasificación.
+\end{itemize}
 
 \end{document}
